@@ -47,8 +47,8 @@ build:
     - pip install --upgrade --no-cache-dir gdown
     - curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | bash
     - apt-get install git-lfs
-    # - git clone https://huggingface.co/nitrosocke/Nitro-Diffusion /stable-diffusion-checkpoints
-    - cd /stable-diffusion-checkpoints && gdown 1qSa4Ig09KUrWNYaTC_zMZTQfkeWAarB_
+    - git clone https://huggingface.co/nitrosocke/Nitro-Diffusion /stable-diffusion-checkpoints
+    # - cd /stable-diffusion-checkpoints && gdown 1qSa4Ig09KUrWNYaTC_zMZTQfkeWAarB_
     - pip install notebook
     - git clone https://github.com/CompVis/taming-transformers
     - git clone https://github.com/openai/CLIP
