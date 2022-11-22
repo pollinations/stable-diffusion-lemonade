@@ -47,7 +47,9 @@ build:
     - pip install --upgrade --no-cache-dir gdown
     - curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | bash
     - apt-get install git-lfs
-    - git clone https://huggingface.co/nitrosocke/Nitro-Diffusion /stable-diffusion-checkpoints
+    - git clone https://huggingface.co/nitrosocke/Nitro-Diffusion
+    - git clone -n https://huggingface.co/nitrosocke/Nitro-Diffusion --depth 1 /stable-diffusion-checkpoints
+    - cd /stable-diffusion-checkpoints && git checkout HEAD nitroDiffusion-v1.ckpt && git lfs fetch nitroDiffusion-v1.ckpt   
     # - cd /stable-diffusion-checkpoints && gdown 1qSa4Ig09KUrWNYaTC_zMZTQfkeWAarB_
     - pip install notebook
     - git clone https://github.com/CompVis/taming-transformers
