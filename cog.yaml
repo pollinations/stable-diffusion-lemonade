@@ -55,7 +55,7 @@ build:
     - pip install jsonmerge clean-fid resize-right torchdiffeq
     - pip install googletrans==3.1.0a0
     - git clone -n https://huggingface.co/nitrosocke/Nitro-Diffusion --depth 1 /stable-diffusion-checkpoints
-    - cd /stable-diffusion-checkpoints && git checkout HEAD nitroDiffusion-v1.ckpt && git lfs checkout HEAD nitroDiffusion-v1.ckpt && git lfs fetch nitroDiffusion-v1.ckpt   
+    - cd /stable-diffusion-checkpoints && git checkout HEAD nitroDiffusion-v1.ckpt && git lfs checkout HEAD nitroDiffusion-v1.ckpt && git lfs fetch nitroDiffusion-v1.ckpt && git lfs pull --include nitroDiffusion-v1.ckpt  
     - ls -l /stable-diffusion-checkpoints > /checkpointlist
 
 # predict.py defines how predictions are run on your model
