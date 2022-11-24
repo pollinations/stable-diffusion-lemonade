@@ -266,11 +266,9 @@ def run_inference(opt, model, model_wrap, device):
 
     datas = [[batch_size * c] for c in cs] 
 
-    run_count = len(os.listdir(outpath)) + 1
-
     os.makedirs(outpath, exist_ok=True)
     
-    base_count = len(os.listdir(outpath))
+    base_count = 0
     
     start_code_a = None
     start_code_b = None
