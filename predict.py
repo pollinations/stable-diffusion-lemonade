@@ -69,7 +69,7 @@ class Predictor(BasePredictor):
             description="Determines influence of your prompt on generation.",
         ),
         num_frames_per_prompt: int = Input(
-            default=8,
+            default=1,
             description="Number of frames to generate per prompt (limited to a maximum of 15 for now because we are experiencing heavy use).",
         ),
         random_seed: int = Input(
@@ -134,7 +134,7 @@ class Predictor(BasePredictor):
         # calculate the frame rate of the video so that the length is always 8 seconds
         frame_rate = num_frames_per_prompt / 8
 
-        if len(glob(f"{options['outdir']}/*.png")) > 4:
+        if len(glob(f"{options['outdir']}/*.png")) > 1:
             os.system(f'ffmpeg -y -r {frame_rate} -i {options["outdir"]}/%*.png {encoding_options} /tmp/z_interpollation.mp4')
             # time.sleep(30)
             return Path("/tmp/z_interpollation.mp4")
