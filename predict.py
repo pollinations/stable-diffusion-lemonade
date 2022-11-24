@@ -56,7 +56,7 @@ class Predictor(BasePredictor):
     def predict(
         self,
         prompts: str = Input(
-            default="Apple by magritte\nBanana by magritte",
+            default="modern disney - bearded guy with a mohawk",
             description="model will try to generate this text. New! Write in any language.",
         ),
         # model: str = Input(
@@ -92,7 +92,7 @@ class Predictor(BasePredictor):
             default=None, 
             description="input image"),
         init_image_strength: float = Input(
-            default=0.3,
+            default=0.4,
             description="How strong to apply the input image. 0 means disregard the input image mostly and 1 copies the image exactly. Values in between are interesting.")
     ) -> Path:
         
@@ -139,7 +139,8 @@ class Predictor(BasePredictor):
             # time.sleep(30)
             return Path("/tmp/z_interpollation.mp4")
         else:
-            return None
+            last_image = list(sorted(glob(f"{options['outdir']}/*.png")))[0]
+            return Path(last_image)
 
 
 
@@ -244,6 +245,7 @@ def run_inference(opt, model, model_wrap, device):
 
     outpath = opt.outdir
     os.makedirs(outpath, exist_ok=True)
+    os.system(("rm -rf %s/*" % outpath))
 
     batch_size = opt.n_samples
     prompts = opt.prompts
