@@ -11,6 +11,7 @@ import time
 from collections import OrderedDict
 from contextlib import contextmanager, nullcontext
 from glob import glob
+from typing import List
 
 import numpy as np
 import torch
@@ -40,6 +41,10 @@ class Predictor(BasePredictor):
         self.device = (
             torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
         )
+        # load bad_prompt.pt and print it's shape
+        self.bad_prompt = torch.load("./bad_prompt.pt")
+        print("bad_prompt_shape", self.bad_prompt['string_to_param']['*'].shape)
+
         options = get_default_options()
         self.options = options
 
@@ -50,13 +55,19 @@ class Predictor(BasePredictor):
         # self.model_vanilla = load_model(self.options, self.device)
         # self.model_wrap_vanilla = CompVisDenoiser(self.model_vanilla)
         os.system("nvidia-smi")
+
+
         self.translator= Translator()
 
     @torch.inference_mode()
     def predict(
         self,
         prompts: str = Input(
-            default="modern disney - bearded guy with a mohawk",
+            default="modern disney - bearded guy with a mohawk\narcher - bearded guy with a mohawk",
+            description="model will try to generate this text. New! Write in any language.",
+        ),
+        negative_prompt: str = Input(
+            default="",
             description="model will try to generate this text. New! Write in any language.",
         ),
         # model: str = Input(
@@ -69,7 +80,7 @@ class Predictor(BasePredictor):
             description="Determines influence of your prompt on generation.",
         ),
         num_frames_per_prompt: int = Input(
-            default=1,
+            default=3,
             description="Number of frames to generate per prompt (limited to a maximum of 15 for now because we are experiencing heavy use).",
         ),
         random_seed: int = Input(
@@ -94,19 +105,18 @@ class Predictor(BasePredictor):
         init_image_strength: float = Input(
             default=0.4,
             description="How strong to apply the input image. 0 means disregard the input image mostly and 1 copies the image exactly. Values in between are interesting.")
-    ) -> Path:
-        
+    ) -> List[Path]:
+        diffusion_steps = abs(diffusion_steps)
+        num_frames_per_prompt = abs(num_frames_per_prompt)
         model = 'nitrosocke'
         if init_image is not None:
             init_image = str(init_image)
             print("using init image", init_image)
-        num_frames_per_prompt = abs(min(num_frames_per_prompt, 15))
-        diffusion_steps = abs(min(diffusion_steps, 40))
         
         options = self.options
         options['prompts'] = prompts.split("\n")
         options['prompts'] = [self.translator.translate(prompt.strip()).text for prompt in options['prompts'] if prompt.strip()]
-        print("translated prompts", options['prompts'])
+        print("translated prompts ", options['prompts'])
 
         options['num_interpolation_steps'] = num_frames_per_prompt
         options['scale'] = prompt_scale
@@ -116,6 +126,7 @@ class Predictor(BasePredictor):
         options['steps'] = diffusion_steps
         options['init_image'] = init_image
         options['init_image_strength'] = init_image_strength
+        options['negative_prompt'] = negative_prompt
         
         if model == 'nitrosocke':
             model = self.model_nitrosocke
@@ -126,21 +137,9 @@ class Predictor(BasePredictor):
 
         run_inference(options, model, model_wrap, self.device)
 
-        #if num_frames_per_prompt == 1:
-        #    return Path(options['output_path'])     
-        encoding_options = "-c:v libx264 -crf 20 -preset slow -vf format=yuv420p -c:a aac -movflags +faststart"
-        os.system("ls -l /outputs")
-
-        # calculate the frame rate of the video so that the length is always 8 seconds
-        frame_rate = num_frames_per_prompt / 8
-
-        if len(glob(f"{options['outdir']}/*.png")) > 1:
-            os.system(f'ffmpeg -y -r {frame_rate} -i {options["outdir"]}/%*.png {encoding_options} /tmp/z_interpollation.mp4')
-            # time.sleep(30)
-            return Path("/tmp/z_interpollation.mp4")
-        else:
-            last_image = list(sorted(glob(f"{options['outdir']}/*.png")))[0]
-            return Path(last_image)
+        images = list(sorted(glob(f"{options['outdir']}/*.png")))
+        images = [Path(image) for image in images]
+        return images
 
 
 
@@ -190,7 +189,12 @@ def diffuse(count_start, start_code, c, batch_size, opt, model, model_wrap, outp
     #print("diffusing with batch size", batch_size)
     uc = None
     if opt.scale != 1.0:
-        uc = model.get_learned_conditioning(batch_size * [""])
+        negative_prompt = ""
+        if opt.negative_prompt:
+            negative_prompt = opt.negative_prompt
+        uc = model.get_learned_conditioning(batch_size * [negative_prompt])
+        # uc = model.get_learned_conditioning(negative_prompts)
+        print("unconditional conditioning shape", uc.shape)
 
     t_enc = 0
     if opt.init_image is not None:
@@ -207,15 +211,6 @@ def diffuse(count_start, start_code, c, batch_size, opt, model, model_wrap, outp
         device=device,
         # cb=callback
         )
-    # samples, _ = sampler.sample(S=opt.ddim_steps,
-    #                                 conditioning=c,
-    #                                 batch_size=batch_size,
-    #                                 shape=shape,
-    #                                 verbose=False,
-    #                                 unconditional_guidance_scale=opt.scale,
-    #                                 unconditional_conditioning=uc,
-    #                                 eta=opt.ddim_eta,
-    #                                 x_T=start_code)
     print("samples_ddim", samples.shape)
     x_samples = model.decode_first_stage(samples)
     x_samples = torch.clamp((x_samples + 1.0) / 2.0, min=0.0, max=1.0)
@@ -238,11 +233,6 @@ def run_inference(opt, model, model_wrap, device):
     """
     seed_everything(opt.seed)
 
-    # if opt.plms:
-    #     sampler = PLMSSampler(model)
-    # else:
-    #     sampler = DDIMSampler(model)
-
     outpath = opt.outdir
     os.makedirs(outpath, exist_ok=True)
     os.system(("rm -rf %s/*" % outpath))
@@ -250,16 +240,6 @@ def run_inference(opt, model, model_wrap, device):
     batch_size = opt.n_samples
     prompts = opt.prompts
 
-    
-    # add first prompt to end to create a video for single prompts or no inteprolations
-    single_prompt = False
-    if len(prompts) == 1:
-        single_prompt = True
-        prompts = prompts + [prompts[0]]
-
-
-    if (not single_prompt) and (opt.num_interpolation_steps == 1):
-        prompts = prompts + [prompts[-1]]
 
     print("embedding prompts")
     cs = [model.get_learned_conditioning(prompt) for prompt in prompts]
@@ -277,19 +257,10 @@ def run_inference(opt, model, model_wrap, device):
     if opt.init_image:
         init_image = load_img(opt.init_image, shape=(opt.W, opt.H)).to(device)
         init_image = repeat(init_image, '1 ... -> b ...', b=batch_size)
-        start_code_a = model.get_first_stage_encoding(model.encode_first_stage(init_image))     
-        start_code_b = start_code_a
-    else:
-        start_code_a = torch.randn([opt.n_samples, opt.C, opt.H // opt.f, opt.W // opt.f], device=device)
-        start_code_b = torch.randn([opt.n_samples, opt.C, opt.H // opt.f, opt.W // opt.f], device=device)
-    audio_intensity = 0
 
     precision_scope = autocast if opt.precision=="autocast" else nullcontext
 
 
-    # If more than one prompt we only interpolate the text conditioning
-    if not single_prompt:
-        start_code_b = start_code_a
 
         
     with torch.no_grad():
@@ -297,20 +268,13 @@ def run_inference(opt, model, model_wrap, device):
             with model.ema_scope():
                 tic = time.time()
                 for n in trange(opt.n_iter):
-                    for data_a,data_b in zip(datas,datas[1:]):          
+                    for data in datas:          
                         for t in np.linspace(0, 1, opt.num_interpolation_steps):
-                            #print("data_a",data_a)
 
-                            data = [slerp(float(t), data_a[0], data_b[0])]
-                            #audio_intensity = (audio_intensity * opt.audio_smoothing) + (opt.audio_keyframes[base_count] * (1 - opt.audio_smoothing))
-                            
-                            # calculate interpolation for init noise. this only applies if we have only on text prompt
-                            # otherwise noise stays constant for now (due to start_code_a == start_code_b)
-                            
-                            t_max = min((0.5, opt.num_interpolation_steps / 10))
-                            noise_t = t * t_max                         
-                    
-                            start_code = slerp(float(noise_t), start_code_a, start_code_b) #slerp(audio_intensity, start_code_a, start_code_b)
+                            if opt.init_image:
+                                start_code = model.get_first_stage_encoding(model.encode_first_stage(init_image))     
+                            else: 
+                                start_code = torch.randn([opt.n_samples, opt.C, opt.H // opt.f, opt.W // opt.f], device=device)
                             for c in data:
                                 diffuse(base_count, start_code, c, batch_size, opt, model, model_wrap, outpath, device)
                                 base_count += 1
